@@ -34,7 +34,7 @@ variable "namespace" {
 variable "image" {
   type        = string
   description = "Container image for data engineering workspaces"
-  default     = "jupyter/pyspark-notebook:latest"
+  default     = "jupyter/pyspark-notebook:2023-05-15"
 }
 
 data "coder_parameter" "cpu" {
@@ -98,21 +98,45 @@ resource "coder_agent" "main" {
     #!/bin/bash
     set -e
 
-    pip install --quiet great-expectations deltalake kafka-python
-    pip install --quiet minio boto3 pyarrow
-    pip install --quiet lakefs-client duckdb
-    pip install --quiet apache-airflow-client
+    # Install additional packages using conda
+    # Note: Using conda instead of pip for better compatibility with the base image
+    conda install --yes \
+      great-expectations \
+      deltalake \
+      pyarrow \
+      boto3 \
+      duckdb
 
-    # Start JupyterLab server
+    # These are installed with pip as they might not be in conda
+    pip install kafka-python lakefs-client apache-airflow-client minio
+
+    # Configure Git for the user
+    git config --global user.name "${coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)}"
+    git config --global user.email "${data.coder_workspace_owner.me.email}"
+
+    # Export port 4040 for Spark UI
+    echo "Spark UI will be available at http://localhost:4040 when a Spark session is running"
+
+    # Stop any running JupyterLab instances
     pkill -f jupyter-lab || true
-    nohup jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.token='' --ServerApp.password='' > /tmp/jupyter.log 2>&1 &
+
+    # Start JupyterLab server - we don't need to specify password/token as Coder handles auth
+    jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.token='' --ServerApp.password='' > /tmp/jupyter.log 2>&1 &
   EOT
   env = {
+    # Git configuration
     GIT_AUTHOR_NAME     = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_AUTHOR_EMAIL    = data.coder_workspace_owner.me.email
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = data.coder_workspace_owner.me.email
+
+    # Spark configuration
     SPARK_HOME          = "/usr/local/spark"
+    PYTHONPATH          = "$PYTHONPATH:/usr/local/spark/python:/usr/local/spark/python/lib/py4j-0.10.9.5-src.zip"
+
+    # Ensure notebook dir is correct
+    JUPYTER_RUNTIME_DIR = "/home/jovyan/.local/share/jupyter/runtime"
+    JUPYTER_DATA_DIR    = "/home/jovyan/.local/share/jupyter"
   }
 
   metadata {
@@ -132,7 +156,7 @@ resource "coder_agent" "main" {
   metadata {
     display_name = "Disk Usage"
     key          = "2_disk_usage"
-    script       = "coder stat disk --path $HOME"
+    script       = "coder stat disk --path /home/jovyan"
     interval     = 60
     timeout      = 1
   }
@@ -169,6 +193,21 @@ resource "coder_app" "jupyter" {
   share        = "owner"
   healthcheck {
     url       = "http://localhost:8888/api"
+    interval  = 5
+    threshold = 10
+  }
+}
+
+resource "coder_app" "spark_ui" {
+  agent_id     = coder_agent.main.id
+  slug         = "spark-ui"
+  display_name = "Spark UI"
+  url          = "http://localhost:4040"
+  icon         = "/icon/spark.svg"
+  subdomain    = false
+  share        = "owner"
+  healthcheck {
+    url       = "http://localhost:4040"
     interval  = 5
     threshold = 10
   }
@@ -259,22 +298,40 @@ resource "kubernetes_deployment" "main" {
         }
       }
       spec {
+        # Use the default jovyan user ID (1000) that comes with Jupyter images
         security_context {
           run_as_user = 1000
-          fs_group    = 1000
+          fs_group    = 100
         }
         service_account_name = "coder"
         container {
           name              = "dev"
           image             = var.image
-          image_pull_policy = "Always"
+          image_pull_policy = "IfNotPresent"  # Changed from Always to IfNotPresent for better efficiency
           command           = ["sh", "-c", coder_agent.main.init_script]
           security_context {
-            run_as_user = "1000"
+            run_as_user = "1000"  # Match the jovyan user ID
           }
           env {
             name  = "CODER_AGENT_TOKEN"
             value = coder_agent.main.token
+          }
+          env {
+            name  = "HOME"
+            value = "/home/jovyan"  # Ensure HOME is set correctly
+          }
+          env {
+            name  = "NB_USER"
+            value = "jovyan"  # Ensure Jupyter knows the correct username
+          }
+          # Expose Spark UI port
+          port {
+            container_port = 8888
+            name           = "jupyter"
+          }
+          port {
+            container_port = 4040
+            name           = "spark-ui"
           }
           resources {
             requests = {
@@ -287,7 +344,7 @@ resource "kubernetes_deployment" "main" {
             }
           }
           volume_mount {
-            mount_path = "/home/coder"
+            mount_path = "/home/jovyan"  # Mount to the jovyan home dir
             name       = "home"
             read_only  = false
           }
