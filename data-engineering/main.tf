@@ -33,14 +33,30 @@ variable "namespace" {
 
 variable "image" {
   type        = string
-  description = "Container image for data engineering workspaces"
-  default     = "jupyter/pyspark-notebook:2023-05-15"
+  description = "Container image for data engineering and LLM workspaces"
+  default     = "quay.io/jupyter/pytorch-notebook:cuda12-python-3.11.8"
+}
+
+data "coder_parameter" "use_gpu" {
+  name         = "use_gpu"
+  display_name = "Use GPU"
+  description  = "Whether to use GPU acceleration for LLM tasks"
+  default      = "false"
+  mutable      = true
+  option {
+    name  = "No GPU"
+    value = "false"
+  }
+  option {
+    name  = "Use GPU"
+    value = "true"
+  }
 }
 
 data "coder_parameter" "cpu" {
   name         = "cpu"
   display_name = "CPU Cores"
-  description  = "Number of CPU cores for Spark workloads"
+  description  = "Number of CPU cores for workloads"
   default      = "4"
   icon         = "/icon/memory.svg"
   mutable      = true
@@ -52,22 +68,30 @@ data "coder_parameter" "cpu" {
     name  = "8 Cores"
     value = "8"
   }
+  option {
+    name  = "16 Cores"
+    value = "16"
+  }
 }
 
 data "coder_parameter" "memory" {
   name         = "memory"
   display_name = "Memory (GB)"
   description  = "Amount of memory in GB"
-  default      = "4"
+  default      = "8"
   icon         = "/icon/memory.svg"
   mutable      = true
   option {
-    name  = "4 GB"
-    value = "4"
-  }
-  option {
     name  = "8 GB"
     value = "8"
+  }
+  option {
+    name  = "16 GB"
+    value = "16"
+  }
+  option {
+    name  = "32 GB"
+    value = "32"
   }
 }
 
@@ -75,12 +99,12 @@ data "coder_parameter" "home_disk_size" {
   name         = "home_disk_size"
   display_name = "Home Disk Size (GB)"
   description  = "Size of persistent home directory"
-  default      = "20"
+  default      = "50"
   type         = "number"
   mutable      = false
   validation {
     min = 20
-    max = 100
+    max = 200
   }
 }
 
@@ -98,21 +122,213 @@ resource "coder_agent" "main" {
     #!/bin/bash
     set -e
 
-    # Install additional packages using conda
-    # Note: Using conda instead of pip for better compatibility with the base image
-    conda install --yes \
+    # Install additional packages using pip for latest versions
+    # LLM & AI/ML libraries
+    pip install --upgrade \
+      transformers \
+      datasets \
+      accelerate \
+      torch \
+      langchain \
+      langchain-community \
+      langchainhub \
+      peft \
+      bitsandbytes \
+      deepspeed \
+      optimum \
+      sentencepiece \
+      safetensors \
+      gradio \
+      tokenizers \
+      einops \
+      tiktoken \
+      vllm \
+      trl
+
+    # Data engineering libraries
+    pip install --upgrade \
       great-expectations \
       deltalake \
       pyarrow \
       boto3 \
-      duckdb
+      duckdb \
+      kafka-python \
+      lakefs-client \
+      apache-airflow-client \
+      minio \
+      pandas \
+      polars \
+      pyodbc \
+      snowflake-connector-python \
+      dbt-core
 
-    # These are installed with pip as they might not be in conda
-    pip install kafka-python lakefs-client apache-airflow-client minio
+    # Vector database and retrieval
+    pip install --upgrade \
+      faiss-cpu \
+      qdrant-client \
+      chromadb \
+      pinecone-client \
+      pymilvus \
+      pgvector
 
     # Configure Git for the user
     git config --global user.name "${coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)}"
     git config --global user.email "${data.coder_workspace_owner.me.email}"
+
+    # Set up Jupyter environment
+    jupyter labextension install @jupyter-widgets/jupyterlab-manager
+
+    # Create notebook example directories
+    mkdir -p ~/llm-examples ~/data-engineering
+
+    # Create a sample LLM notebook
+    cat > ~/llm-examples/transformers_quickstart.ipynb << 'EOF'
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Transformers Quickstart\n",
+    "\n",
+    "This notebook demonstrates how to use the Transformers library to work with Large Language Models."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "source": [
+    "from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM\n",
+    "import torch"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "source": [
+    "# Check if GPU is available\n",
+    "print(f\"GPU available: {torch.cuda.is_available()}\")\n",
+    "if torch.cuda.is_available():\n",
+    "    print(f\"GPU device: {torch.cuda.get_device_name()}\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "source": [
+    "# Simple pipeline for sentiment analysis\n",
+    "classifier = pipeline(\"sentiment-analysis\")\n",
+    "result = classifier(\"This LLM workspace is amazing!\")\n",
+    "print(result)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "source": [
+    "# Text generation with a small model\n",
+    "generator = pipeline(\"text-generation\", model=\"distilgpt2\")\n",
+    "result = generator(\"The data science team has developed\", max_length=30)\n",
+    "print(result[0]['generated_text'])"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  }
+ }
+}
+EOF
+
+    # Create data engineering sample notebook
+    cat > ~/data-engineering/spark_polars_comparison.ipynb << 'EOF'
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Data Processing: PySpark vs Polars\n",
+    "\n",
+    "This notebook compares data processing approaches using PySpark and Polars."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "source": [
+    "import pyspark.sql.functions as F\n",
+    "from pyspark.sql import SparkSession\n",
+    "import polars as pl\n",
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "import time"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "source": [
+    "# Create a local Spark session\n",
+    "spark = SparkSession.builder \\\n",
+    "    .appName(\"SparkPolarsComparison\") \\\n",
+    "    .master(\"local[*]\") \\\n",
+    "    .getOrCreate()\n",
+    "\n",
+    "print(f\"Spark version: {spark.version}\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "source": [
+    "# Generate sample data\n",
+    "def create_data(rows=100000):\n",
+    "    df_pd = pd.DataFrame({\n",
+    "        'id': np.arange(1, rows+1),\n",
+    "        'value': np.random.rand(rows) * 100,\n",
+    "        'category': np.random.choice(['A', 'B', 'C', 'D'], size=rows)\n",
+    "    })\n",
+    "    return df_pd\n",
+    "\n",
+    "sample_data = create_data()\n",
+    "sample_data.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "source": [
+    "# Convert to Spark DataFrame\n",
+    "df_spark = spark.createDataFrame(sample_data)\n",
+    "\n",
+    "# Convert to Polars DataFrame\n",
+    "df_polars = pl.from_pandas(sample_data)\n",
+    "\n",
+    "print(f\"Data loaded into Spark and Polars\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  }
+ }
+}
+EOF
 
     # Export port 4040 for Spark UI
     echo "Spark UI will be available at http://localhost:4040 when a Spark session is running"
@@ -120,8 +336,10 @@ resource "coder_agent" "main" {
     # Stop any running JupyterLab instances
     pkill -f jupyter-lab || true
 
-    # Start JupyterLab server - we don't need to specify password/token as Coder handles auth
-    jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.token='' --ServerApp.password='' > /tmp/jupyter.log 2>&1 &
+    # Start JupyterLab server with optimized configuration
+    jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.token='' --ServerApp.password='' --ServerApp.terminado_settings='{"shell_command": ["/bin/bash"]}' > /tmp/jupyter.log 2>&1 &
+
+    echo "Workspace ready! JupyterLab available at port 8888"
   EOT
   env = {
     # Git configuration
@@ -130,13 +348,18 @@ resource "coder_agent" "main" {
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = data.coder_workspace_owner.me.email
 
-    # Spark configuration
-    SPARK_HOME          = "/usr/local/spark"
-    PYTHONPATH          = "$PYTHONPATH:/usr/local/spark/python:/usr/local/spark/python/lib/py4j-0.10.9.5-src.zip"
+    # Python and PIP configuration
+    PIP_DISABLE_PIP_VERSION_CHECK = "1"
+    PYTHONUNBUFFERED              = "1"
 
-    # Ensure notebook dir is correct
+    # Jupyter configuration
     JUPYTER_RUNTIME_DIR = "/home/jovyan/.local/share/jupyter/runtime"
     JUPYTER_DATA_DIR    = "/home/jovyan/.local/share/jupyter"
+
+    # Torch/CUDA configuration - will be used if GPU is available
+    NVIDIA_VISIBLE_DEVICES     = "all"
+    CUDA_DEVICE_ORDER          = "PCI_BUS_ID"
+    TORCH_CUDA_ARCH_LIST       = "8.0"
   }
 
   metadata {
@@ -161,16 +384,9 @@ resource "coder_agent" "main" {
     timeout      = 1
   }
   metadata {
-    display_name = "CPU Usage (Host)"
-    key          = "3_cpu_usage_host"
-    script       = "coder stat cpu --host"
-    interval     = 10
-    timeout      = 1
-  }
-  metadata {
-    display_name = "Memory Usage (Host)"
-    key          = "4_mem_usage_host"
-    script       = "coder stat mem --host"
+    display_name = "GPU Usage"
+    key          = "3_gpu_usage"
+    script       = "nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits | awk '{print $1\"%\"}' || echo 'No GPU'"
     interval     = 10
     timeout      = 1
   }
@@ -307,10 +523,10 @@ resource "kubernetes_deployment" "main" {
         container {
           name              = "dev"
           image             = var.image
-          image_pull_policy = "IfNotPresent"  # Changed from Always to IfNotPresent for better efficiency
+          image_pull_policy = "IfNotPresent"
           command           = ["sh", "-c", coder_agent.main.init_script]
           security_context {
-            run_as_user = "1000"  # Match the jovyan user ID
+            run_as_user = "1000"
           }
           env {
             name  = "CODER_AGENT_TOKEN"
@@ -318,13 +534,46 @@ resource "kubernetes_deployment" "main" {
           }
           env {
             name  = "HOME"
-            value = "/home/jovyan"  # Ensure HOME is set correctly
+            value = "/home/jovyan"
           }
           env {
             name  = "NB_USER"
-            value = "jovyan"  # Ensure Jupyter knows the correct username
+            value = "jovyan"
           }
-          # Expose Spark UI port
+
+          # Enable GPU if requested
+          dynamic "resources" {
+            for_each = data.coder_parameter.use_gpu.value == "true" ? [1] : []
+            content {
+              limits = {
+                "nvidia.com/gpu" = "1"
+                "cpu"           = "${data.coder_parameter.cpu.value}"
+                "memory"        = "${data.coder_parameter.memory.value}Gi"
+              }
+              requests = {
+                "nvidia.com/gpu" = "1"
+                "cpu"           = "${(tonumber(data.coder_parameter.cpu.value) * 0.5)}m"
+                "memory"        = "${(tonumber(data.coder_parameter.memory.value) * 0.5)}Gi"
+              }
+            }
+          }
+
+          # CPU-only resources if GPU not requested
+          dynamic "resources" {
+            for_each = data.coder_parameter.use_gpu.value == "true" ? [] : [1]
+            content {
+              limits = {
+                "cpu"    = "${data.coder_parameter.cpu.value}"
+                "memory" = "${data.coder_parameter.memory.value}Gi"
+              }
+              requests = {
+                "cpu"    = "${(tonumber(data.coder_parameter.cpu.value) * 0.5)}m"
+                "memory" = "${(tonumber(data.coder_parameter.memory.value) * 0.5)}Gi"
+              }
+            }
+          }
+
+          # Expose ports
           port {
             container_port = 8888
             name           = "jupyter"
@@ -333,18 +582,9 @@ resource "kubernetes_deployment" "main" {
             container_port = 4040
             name           = "spark-ui"
           }
-          resources {
-            requests = {
-              "cpu"    = "${(tonumber(data.coder_parameter.cpu.value) * 0.5)}m"
-              "memory" = "${(tonumber(data.coder_parameter.memory.value) * 0.5)}Gi"
-            }
-            limits = {
-              "cpu"    = "${data.coder_parameter.cpu.value}"
-              "memory" = "${data.coder_parameter.memory.value}Gi"
-            }
-          }
+
           volume_mount {
-            mount_path = "/home/jovyan"  # Mount to the jovyan home dir
+            mount_path = "/home/jovyan"
             name       = "home"
             read_only  = false
           }
