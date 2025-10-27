@@ -28,6 +28,7 @@ variable "use_kubeconfig" {
 variable "namespace" {
   type        = string
   description = "The Kubernetes namespace to create workspaces in (must exist prior to creating workspaces)."
+  default     = "coder"
 }
 
 variable "image" {
@@ -40,7 +41,7 @@ data "coder_parameter" "cpu" {
   name         = "cpu"
   display_name = "CPU Cores"
   description  = "Number of CPU cores for Spark workloads"
-  default      = "8"
+  default      = "4"
   icon         = "/icon/memory.svg"
   mutable      = true
   option {
@@ -51,38 +52,22 @@ data "coder_parameter" "cpu" {
     name  = "8 Cores"
     value = "8"
   }
-  option {
-    name  = "16 Cores"
-    value = "16"
-  }
-  option {
-    name  = "32 Cores"
-    value = "32"
-  }
 }
 
 data "coder_parameter" "memory" {
   name         = "memory"
   display_name = "Memory (GB)"
   description  = "Amount of memory in GB"
-  default      = "32"
+  default      = "4"
   icon         = "/icon/memory.svg"
   mutable      = true
   option {
-    name  = "16 GB"
-    value = "16"
+    name  = "4 GB"
+    value = "4"
   }
   option {
-    name  = "32 GB"
-    value = "32"
-  }
-  option {
-    name  = "64 GB"
-    value = "64"
-  }
-  option {
-    name  = "128 GB"
-    value = "128"
+    name  = "8 GB"
+    value = "8"
   }
 }
 
@@ -90,12 +75,12 @@ data "coder_parameter" "home_disk_size" {
   name         = "home_disk_size"
   display_name = "Home Disk Size (GB)"
   description  = "Size of persistent home directory"
-  default      = "100"
+  default      = "20"
   type         = "number"
   mutable      = false
   validation {
     min = 20
-    max = 1000
+    max = 100
   }
 }
 
