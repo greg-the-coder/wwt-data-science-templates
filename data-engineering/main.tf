@@ -28,6 +28,7 @@ variable "use_kubeconfig" {
 variable "namespace" {
   type        = string
   description = "The Kubernetes namespace to create workspaces in (must exist prior to creating workspaces)."
+  default     = "coder"
 }
 
 variable "image" {
@@ -39,8 +40,8 @@ variable "image" {
 data "coder_parameter" "cpu" {
   name         = "cpu"
   display_name = "CPU Cores"
-  description  = "Number of CPU cores for Spark workloads"
-  default      = "8"
+  description  = "Number of CPU cores for data processing workloads"
+  default      = "4"
   icon         = "/icon/memory.svg"
   mutable      = true
   option {
@@ -51,38 +52,22 @@ data "coder_parameter" "cpu" {
     name  = "8 Cores"
     value = "8"
   }
-  option {
-    name  = "16 Cores"
-    value = "16"
-  }
-  option {
-    name  = "32 Cores"
-    value = "32"
-  }
 }
 
 data "coder_parameter" "memory" {
   name         = "memory"
   display_name = "Memory (GB)"
   description  = "Amount of memory in GB"
-  default      = "32"
+  default      = "8"
   icon         = "/icon/memory.svg"
   mutable      = true
   option {
+    name  = "8 GB"
+    value = "8"
+  }
+  option {
     name  = "16 GB"
     value = "16"
-  }
-  option {
-    name  = "32 GB"
-    value = "32"
-  }
-  option {
-    name  = "64 GB"
-    value = "64"
-  }
-  option {
-    name  = "128 GB"
-    value = "128"
   }
 }
 
@@ -90,12 +75,12 @@ data "coder_parameter" "home_disk_size" {
   name         = "home_disk_size"
   display_name = "Home Disk Size (GB)"
   description  = "Size of persistent home directory"
-  default      = "100"
+  default      = "30"
   type         = "number"
   mutable      = false
   validation {
     min = 20
-    max = 1000
+    max = 100
   }
 }
 
@@ -111,23 +96,123 @@ resource "coder_agent" "main" {
   arch           = "amd64"
   startup_script = <<-EOT
     #!/bin/bash
+    # We'll use set -e but with controlled error handling for pip installs
     set -e
 
-    pip install --quiet great-expectations deltalake kafka-python
-    pip install --quiet minio boto3 pyarrow
-    pip install --quiet lakefs-client duckdb
-    pip install --quiet apache-airflow-client
+    echo "Starting data engineering workspace setup..."
 
-    # Start JupyterLab server
-    pkill -f jupyter-lab || true
-    nohup jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.token='' --ServerApp.password='' > /tmp/jupyter.log 2>&1 &
+    # Configure Git first (no dependencies)
+    git config --global user.name "${coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)}"
+    git config --global user.email "${data.coder_workspace_owner.me.email}"
+
+    # Function to install packages with error handling
+    install_package() {
+      local package=$1
+      echo "Installing $package..."
+      if pip install --no-cache-dir --user "$package"; then
+        echo "✓ Successfully installed $package"
+      else
+        echo "⚠ Failed to install $package, continuing..."
+      fi
+    }
+
+    # Core data processing packages (skip pyarrow - already in base image)
+    echo "Installing core data processing packages..."
+    install_package "boto3"
+
+    # Data lake and streaming packages
+    echo "Installing data lake and streaming packages..."
+    install_package "deltalake"
+    install_package "kafka-python"
+    install_package "minio"
+    install_package "lakefs-client"
+
+    # Data quality and validation
+    echo "Installing data quality packages..."
+    install_package "great-expectations"
+
+    # Distributed computing and orchestration
+    echo "Installing distributed computing packages..."
+    install_package "apache-airflow"
+
+    # Vector database and model serving
+    echo "Installing model serving and vector DB packages..."
+    install_package "bentoml"
+
+    # Kubernetes and workflow tools
+    echo "Installing workflow and deployment packages..."
+    install_package "kfp"
+    install_package "kubernetes"
+
+    # Ensure Jupyter widgets are available
+    echo "Setting up Jupyter environment..."
+    install_package "ipywidgets"
+
+    # Clean up any existing Jupyter processes
+    #echo "Cleaning up existing Jupyter processes..."
+    #pkill -f jupyter-lab || true
+    #sleep 3
+
+    # Start JupyterLab with comprehensive configuration
+    # Note: Security settings below are optimized for Coder workspace usage
+    # where authentication is handled by Coder and access is proxied
+    echo "Starting JupyterLab..."
+    jupyter lab \
+      --ip=0.0.0.0 \
+      --port=8888 \
+      --no-browser \
+      --ServerApp.token='' \
+      --ServerApp.password='' \
+      --ServerApp.allow_origin='*' \
+      --ServerApp.allow_remote_access=True \
+      --ServerApp.disable_check_xsrf=True \
+      > /tmp/jupyter.log 2>&1 &
+
+    # Wait and verify Jupyter started
+    echo "Waiting for JupyterLab to start..."
+    sleep 5
+
+    if pgrep -f jupyter-lab > /dev/null; then
+      echo "✓ JupyterLab started successfully on port 8888"
+      echo "✓ Data Engineering workspace ready!"
+    else
+      echo "✗ JupyterLab failed to start. Attempting restart..."
+      cat /tmp/jupyter.log
+      
+      # Try a simpler startup
+      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser > /tmp/jupyter-simple.log 2>&1 &
+      sleep 3
+      
+      if pgrep -f jupyter-lab > /dev/null; then
+        echo "✓ JupyterLab started with basic configuration"
+      else
+        echo "✗ JupyterLab startup failed completely"
+        cat /tmp/jupyter-simple.log
+      fi
+    fi
+
+    echo ""
+    echo "Available services:"
+    echo "- JupyterLab: http://localhost:8888"
+    echo "- Spark UI: http://localhost:4040 (when Spark session is active)"
+    echo ""
+    echo "Installed packages:"
+    pip list | grep -E "(boto3|duckdb|polars|deltalake|kafka|minio|great-expectations|lakefs|torch|transformers|mlflow|ray|airflow|pymilvus|bentoml|kfp)" || echo "Package list unavailable"
   EOT
   env = {
+    # Git configuration
     GIT_AUTHOR_NAME     = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_AUTHOR_EMAIL    = data.coder_workspace_owner.me.email
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = data.coder_workspace_owner.me.email
+
+    # Spark configuration
     SPARK_HOME          = "/usr/local/spark"
+    PYTHONPATH          = "$PYTHONPATH:/usr/local/spark/python"
+
+    # Python configuration
+    PIP_DISABLE_PIP_VERSION_CHECK = "1"
+    PYTHONUNBUFFERED              = "1"
   }
 
   metadata {
@@ -147,7 +232,7 @@ resource "coder_agent" "main" {
   metadata {
     display_name = "Disk Usage"
     key          = "2_disk_usage"
-    script       = "coder stat disk --path $HOME"
+    script       = "coder stat disk --path /home/jovyan"
     interval     = 60
     timeout      = 1
   }
@@ -164,6 +249,16 @@ resource "coder_agent" "main" {
     script       = "coder stat mem --host"
     interval     = 10
     timeout      = 1
+  }
+  metadata {
+    display_name = "Load Average (Host)"
+    key          = "5_load_host"
+    # get load avg scaled by number of cores
+    script   = <<EOT
+      echo "`cat /proc/loadavg | awk '{ print $1 }'` `nproc`" | awk '{ printf "%0.2f", $1/$2 }'
+    EOT
+    interval = 60
+    timeout  = 1
   }
   display_apps {
     vscode                 = true
@@ -184,6 +279,21 @@ resource "coder_app" "jupyter" {
   share        = "owner"
   healthcheck {
     url       = "http://localhost:8888/api"
+    interval  = 5
+    threshold = 10
+  }
+}
+
+resource "coder_app" "spark_ui" {
+  agent_id     = coder_agent.main.id
+  slug         = "spark-ui"
+  display_name = "Spark UI"
+  url          = "http://localhost:4040"
+  icon         = "/icon/spark.svg"
+  subdomain    = false
+  share        = "owner"
+  healthcheck {
+    url       = "http://localhost:4040"
     interval  = 5
     threshold = 10
   }
@@ -274,6 +384,7 @@ resource "kubernetes_deployment" "main" {
         }
       }
       spec {
+        # Use the default jovyan user ID (1000) that comes with Jupyter images
         security_context {
           run_as_user = 1000
           fs_group    = 1000
@@ -291,18 +402,38 @@ resource "kubernetes_deployment" "main" {
             name  = "CODER_AGENT_TOKEN"
             value = coder_agent.main.token
           }
+          env {
+            name  = "HOME"
+            value = "/home/jovyan"
+          }
+          env {
+            name  = "NB_USER"
+            value = "jovyan"
+          }
+
+          # Expose ports
+          port {
+            container_port = 8888
+            name           = "jupyter"
+          }
+          port {
+            container_port = 4040
+            name           = "spark-ui"
+          }
+
           resources {
-            requests = {
-              "cpu"    = "${(tonumber(data.coder_parameter.cpu.value) * 0.5)}m"
-              "memory" = "${(tonumber(data.coder_parameter.memory.value) * 0.5)}Gi"
-            }
             limits = {
               "cpu"    = "${data.coder_parameter.cpu.value}"
               "memory" = "${data.coder_parameter.memory.value}Gi"
             }
+            requests = {
+              "cpu"    = "250m"
+              "memory" = "${(tonumber(data.coder_parameter.memory.value) * 0.5)}Gi"
+            }
           }
+
           volume_mount {
-            mount_path = "/home/coder"
+            mount_path = "/home/jovyan"
             name       = "home"
             read_only  = false
           }
