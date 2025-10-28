@@ -28,6 +28,7 @@ variable "use_kubeconfig" {
 variable "namespace" {
   type        = string
   description = "The Kubernetes namespace to create workspaces in (must exist prior to creating workspaces)."
+  default     = "coder"
 }
 
 variable "image" {
@@ -187,6 +188,16 @@ resource "coder_agent" "main" {
     interval     = 10
     timeout      = 1
   }
+  metadata {
+    display_name = "Load Average (Host)"
+    key          = "5_load_host"
+    # get load avg scaled by number of cores
+    script   = <<EOT
+      echo "`cat /proc/loadavg | awk '{ print $1 }'` `nproc`" | awk '{ printf "%0.2f", $1/$2 }'
+    EOT
+    interval = 60
+    timeout  = 1
+  }
   display_apps {
     vscode                 = true
     vscode_insiders        = false
@@ -330,7 +341,7 @@ resource "kubernetes_deployment" "main" {
           }
           resources {
             requests = {
-              "cpu"    = "${(tonumber(data.coder_parameter.cpu.value) * 0.5)}m"
+              "cpu"    = "250m"
               "memory" = "${(tonumber(data.coder_parameter.memory.value) * 0.5)}Gi"
             }
             limits = {

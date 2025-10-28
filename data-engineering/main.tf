@@ -96,8 +96,9 @@ resource "coder_agent" "main" {
   arch           = "amd64"
   startup_script = <<-EOT
     #!/bin/bash
-    # Remove set -e to handle errors gracefully
-    
+    # We'll use set -e but with controlled error handling for pip installs
+    set -e
+
     echo "Starting data engineering workspace setup..."
 
     # Configure Git first (no dependencies)
@@ -153,6 +154,8 @@ resource "coder_agent" "main" {
     #sleep 3
 
     # Start JupyterLab with comprehensive configuration
+    # Note: Security settings below are optimized for Coder workspace usage
+    # where authentication is handled by Coder and access is proxied
     echo "Starting JupyterLab..."
     jupyter lab \
       --ip=0.0.0.0 \
@@ -232,6 +235,30 @@ resource "coder_agent" "main" {
     script       = "coder stat disk --path /home/jovyan"
     interval     = 60
     timeout      = 1
+  }
+  metadata {
+    display_name = "CPU Usage (Host)"
+    key          = "3_cpu_usage_host"
+    script       = "coder stat cpu --host"
+    interval     = 10
+    timeout      = 1
+  }
+  metadata {
+    display_name = "Memory Usage (Host)"
+    key          = "4_mem_usage_host"
+    script       = "coder stat mem --host"
+    interval     = 10
+    timeout      = 1
+  }
+  metadata {
+    display_name = "Load Average (Host)"
+    key          = "5_load_host"
+    # get load avg scaled by number of cores
+    script   = <<EOT
+      echo "`cat /proc/loadavg | awk '{ print $1 }'` `nproc`" | awk '{ printf "%0.2f", $1/$2 }'
+    EOT
+    interval = 60
+    timeout  = 1
   }
   display_apps {
     vscode                 = true
@@ -360,13 +387,13 @@ resource "kubernetes_deployment" "main" {
         # Use the default jovyan user ID (1000) that comes with Jupyter images
         security_context {
           run_as_user = 1000
-          fs_group    = 100
+          fs_group    = 1000
         }
         service_account_name = "coder"
         container {
           name              = "dev"
           image             = var.image
-          image_pull_policy = "IfNotPresent"
+          image_pull_policy = "Always"
           command           = ["sh", "-c", coder_agent.main.init_script]
           security_context {
             run_as_user = "1000"
@@ -400,7 +427,7 @@ resource "kubernetes_deployment" "main" {
               "memory" = "${data.coder_parameter.memory.value}Gi"
             }
             requests = {
-              "cpu"    = "${(tonumber(data.coder_parameter.cpu.value) * 0.5)}m"
+              "cpu"    = "250m"
               "memory" = "${(tonumber(data.coder_parameter.memory.value) * 0.5)}Gi"
             }
           }
