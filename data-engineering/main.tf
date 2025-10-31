@@ -97,7 +97,7 @@ resource "coder_agent" "main" {
   startup_script = <<-EOT
     #!/bin/bash
     # We'll use set -e but with controlled error handling for pip installs
-    set -e
+    # set -e
 
     echo "Starting data engineering workspace setup..."
 
@@ -133,8 +133,10 @@ resource "coder_agent" "main" {
 
     # Distributed computing and orchestration
     echo "Installing distributed computing packages..."
-   # install_package "structlog<22.0.0"
-   # install_package "apache-airflow"
+    pip uninstall apache-airflow -y
+    pip install apache-airflow --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.5.3/constraints-3.8.txt"
+    pip uninstall structlog -y
+    pip install "structlog==25.4.0"
 
     # Vector database and model serving
     echo "Installing model serving and vector DB packages..."
