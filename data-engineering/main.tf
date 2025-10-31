@@ -34,7 +34,7 @@ variable "namespace" {
 variable "image" {
   type        = string
   description = "Container image for data engineering workspaces"
-  default     = "codercom/enterprise-base:ubuntu"
+  default     = "jupyter/pyspark-notebook:latest"
 }
 
 data "coder_parameter" "cpu" {
@@ -141,8 +141,8 @@ resource "coder_agent" "main" {
 
     # Kubernetes and workflow tools
     echo "Installing workflow and deployment packages..."
-    install_package "kfp"
     install_package "kubernetes"
+    install_package "kubeflow-training"
 
     # Ensure Jupyter widgets are available
     echo "Setting up Jupyter environment..."
