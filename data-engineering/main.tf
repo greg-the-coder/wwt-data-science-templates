@@ -133,7 +133,8 @@ resource "coder_agent" "main" {
 
     # Distributed computing and orchestration
     echo "Installing distributed computing packages..."
-    install_package "apache-airflow"
+   # install_package "structlog<22.0.0"
+   # install_package "apache-airflow"
 
     # Vector database and model serving
     echo "Installing model serving and vector DB packages..."
