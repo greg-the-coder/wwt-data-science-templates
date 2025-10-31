@@ -34,7 +34,7 @@ variable "namespace" {
 variable "image" {
   type        = string
   description = "Container image for data engineering workspaces"
-  default     = "jupyter/pyspark-notebook:latest"
+  default     = "codercom/enterprise-base:ubuntu"
 }
 
 data "coder_parameter" "cpu" {
