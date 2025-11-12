@@ -84,9 +84,13 @@ data "coder_parameter" "memory" {
   name         = "memory"
   display_name = "Memory (GB)"
   description  = "Amount of memory in GB"
-  default      = "16"
+  default      = "8"
   icon         = "/icon/memory.svg"
   mutable      = true
+  option {
+    name  = "8 GB"
+    value = "8"
+  }
   option {
     name  = "16 GB"
     value = "16"
