@@ -161,7 +161,7 @@ resource "coder_agent" "main" {
     
     # Install system dependencies
     echo "Updating package lists and installing system dependencies..."
-    apt-get update -qq && apt-get install -y -qq \
+    apt-get update && apt-get install -y \
       git curl wget vim jq htop \
       build-essential cmake \
       libgl1-mesa-glx libglib2.0-0 \
@@ -169,13 +169,13 @@ resource "coder_agent" "main" {
     
     # Install and configure pipx
     echo "Setting up Python environment..."
-    python3 -m pip install --quiet --user pipx
+    python3 -m pip install --user pipx
     export PATH="$HOME/.local/bin:$PATH"
     
     # Install core tools
     echo "Installing core tools..."
-    pipx install --pip-args="--quiet" jupyterlab
-    pipx inject --pip-args="--quiet" jupyterlab \
+    pipx install --pip-args=jupyterlab
+    pipx inject --pip-args=jupyterlab \
       jupyterlab-git \
       jupyterlab-lsp \
       jupyterlab-code-formatter \
@@ -183,20 +183,20 @@ resource "coder_agent" "main" {
     
     # Install Python packages
     echo "Installing Python packages..."
-    pip install --quiet --upgrade pip setuptools wheel
+    pip install --upgrade pip setuptools wheel
     
     # Core data science stack
-    pip install --quiet \
+    pip install \
       numpy pandas scipy scikit-learn matplotlib seaborn plotly \
       jupyter jupyterlab ipywidgets ipympl \
       tqdm requests pillow opencv-python-headless
     
     # PyTorch ecosystem
-    pip install --quiet \
+    pip install \
       torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
     
     # ML tools
-    pip install --quiet \
+    pip install \
       mlflow \
       wandb \
       ray[train,tune,serve] \
@@ -205,7 +205,7 @@ resource "coder_agent" "main" {
       tensorboard
     
     # Install validation script dependencies
-    pip install --quiet psutil py-cpuinfo
+    pip install psutil py-cpuinfo
     
     # Copy validation script
     cat > /home/coder/validate_environment.py << 'EOF'
