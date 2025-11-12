@@ -7,9 +7,31 @@ terraform {
       source = "hashicorp/kubernetes"
     }
   }
+  required_version = ">= 1.3.0"
 }
 
-provider "coder" {}
+provider "coder" {
+  # Configuration options
+}
+
+# Default tags for all resources
+locals {
+  common_labels = {
+    "app.kubernetes.io/name"       = "ml-training"
+    "app.kubernetes.io/instance"   = "${data.coder_workspace.me.name}"
+    "app.kubernetes.io/part-of"    = "wwt-data-science-templates"
+    "app.kubernetes.io/created-by" = "coder"
+    "coder.com/workspace-id"       = data.coder_workspace.me.id
+    "coder.com/owner"              = data.coder_workspace_owner.me.email
+  }
+  
+  # Default environment variables
+  default_env_vars = {
+    "PYTHONUNBUFFERED" = "1"
+    "PYTHONIOENCODING" = "utf-8"
+    "PAGER"            = "cat"
+  }
+}
 
 variable "use_kubeconfig" {
   type        = bool
@@ -120,38 +142,136 @@ data "coder_workspace" "me" {}
 data "coder_workspace_owner" "me" {}
 
 resource "coder_agent" "main" {
-  os             = "linux"
-  arch           = "amd64"
+  os   = "linux"
+  arch = "amd64"
+  
+  # Copy validation script to workspace
+  dir = "/home/coder"
+  
   startup_script = <<-EOT
     #!/bin/bash
-    set -e
-
-    apt-get update -qq && apt-get install -y -qq git curl wget vim
-
+    set -euo pipefail
+    
+    # Create required directories
+    mkdir -p ~/.local/bin ~/.config ~/.cache
+    
+    # Install system dependencies
+    echo "Updating package lists and installing system dependencies..."
+    apt-get update -qq && apt-get install -y -qq \
+      git curl wget vim jq htop \
+      build-essential cmake \
+      libgl1-mesa-glx libglib2.0-0 \
+      > /dev/null 2>&1
+    
+    # Install and configure pipx
+    echo "Setting up Python environment..."
     python3 -m pip install --quiet --user pipx
     export PATH="$HOME/.local/bin:$PATH"
-
-    pipx install jupyterlab
-    pipx inject jupyterlab ipywidgets
-
-    pip install --quiet transformers datasets accelerate
-    pip install --quiet mlflow ray[train] ray[tune]
-    pip install --quiet torch torchvision
-    pip install --quiet scikit-learn pandas numpy matplotlib seaborn
-
-    # Start MLflow server in background
-    nohup mlflow server --host 0.0.0.0 --port 5000 > /tmp/mlflow.log 2>&1 &
-
-    # Start JupyterLab server
-    nohup jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.token='' > /tmp/jupyter.log 2>&1 &
+    
+    # Install core tools
+    echo "Installing core tools..."
+    pipx install --pip-args="--quiet" jupyterlab
+    pipx inject --pip-args="--quiet" jupyterlab \
+      jupyterlab-git \
+      jupyterlab-lsp \
+      jupyterlab-code-formatter \
+      jupyterlab-drawio
+    
+    # Install Python packages
+    echo "Installing Python packages..."
+    pip install --quiet --upgrade pip setuptools wheel
+    
+    # Core data science stack
+    pip install --quiet \
+      numpy pandas scipy scikit-learn matplotlib seaborn plotly \
+      jupyter jupyterlab ipywidgets ipympl \
+      tqdm requests pillow opencv-python-headless
+    
+    # PyTorch ecosystem
+    pip install --quiet \
+      torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    
+    # ML tools
+    pip install --quiet \
+      mlflow \
+      wandb \
+      ray[train,tune,serve] \
+      pytorch-lightning \
+      transformers datasets tokenizers \
+      tensorboard
+    
+    # Install validation script dependencies
+    pip install --quiet psutil py-cpuinfo
+    
+    # Copy validation script
+    cat > /home/coder/validate_environment.py << 'EOF'
+    ${file("${path.module}/validate_environment.py")}
+    EOF
+    
+    # Set up JupyterLab
+    echo "Configuring JupyterLab..."
+    jupyter nbextension enable --py widgetsnbextension --sys-prefix
+    jupyter lab build --dev-build=False --minimize=False
+    
+    # Start services
+    echo "Starting services..."
+    
+    # Start MLflow server
+    mkdir -p /home/coder/mlruns
+    nohup mlflow server \
+      --host 0.0.0.0 \
+      --port 5000 \
+      --backend-store-uri sqlite:////home/coder/mlruns/mlflow.db \
+      --default-artifact-root /home/coder/mlruns \
+      > /tmp/mlflow.log 2>&1 &
+    
+    # Start JupyterLab
+    mkdir -p /home/coder/notebooks
+    nohup jupyter lab \
+      --ip=0.0.0.0 \
+      --port=8888 \
+      --no-browser \
+      --ServerApp.token='' \
+      --ServerApp.password='' \
+      --ServerApp.root_dir=/home/coder/notebooks \
+      --ServerApp.allow_origin='*' \
+      --ServerApp.allow_remote_access=True \
+      --ServerApp.disable_check_xsrf=True \
+      > /tmp/jupyter.log 2>&1 &
+    
+    # Run validation script
+    echo "Running environment validation..."
+    python /home/coder/validate_environment.py || echo "Validation completed with warnings"
+    
+    echo "\n✅ ML Training environment is ready!"
   EOT
 
-  env = {
-    GIT_AUTHOR_NAME     = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
-    GIT_AUTHOR_EMAIL    = data.coder_workspace_owner.me.email
-    GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
-    GIT_COMMITTER_EMAIL = data.coder_workspace_owner.me.email
-  }
+  env = merge(
+    local.default_env_vars,
+    {
+      # Git configuration
+      GIT_AUTHOR_NAME     = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
+      GIT_AUTHOR_EMAIL    = data.coder_workspace_owner.me.email
+      GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
+      GIT_COMMITTER_EMAIL = data.coder_workspace_owner.me.email
+      
+      # Python configuration
+      PYTHONPATH          = "/home/coder"
+      
+      # MLflow configuration
+      MLFLOW_TRACKING_URI = "http://localhost:5000"
+      
+      # Jupyter configuration
+      JUPYTER_PATH       = "/home/coder/.local/share/jupyter"
+      
+      # CUDA paths (if GPU is available)
+      LD_LIBRARY_PATH    = "/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
+      
+      # Workspace information
+      WORKSPACE_NAME     = data.coder_workspace.me.name
+      WORKSPACE_OWNER    = data.coder_workspace_owner.me.email
+    }
+  )
 
   metadata {
     display_name = "CPU Usage"
@@ -175,28 +295,58 @@ resource "coder_agent" "main" {
     timeout      = 1
   }
   metadata {
-    display_name = "CPU Usage (Host)"
-    key          = "3_cpu_usage_host"
+    display_name = "GPU Memory"
+    key          = "3_gpu_mem"
+    script       = <<-EOT
+      if command -v nvidia-smi &> /dev/null; then
+        nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits | awk -F', ' '{printf "%.1f/%.1f GB", $1/1024, $2/1024}'
+      else
+        echo "N/A"
+      fi
+    EOT
+    interval     = 10
+    timeout      = 1
+  }
+  metadata {
+    display_name = "GPU Utilization"
+    key          = "4_gpu_util"
+    script       = <<-EOT
+      if command -v nvidia-smi &> /dev/null; then
+        nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits | awk '{print $1"%"}'
+      else
+        echo "N/A"
+      fi
+    EOT
+    interval     = 10
+    timeout      = 1
+  }
+  metadata {
+    display_name = "Disk Usage"
+    key          = "5_disk_usage"
+    script       = "df -h $HOME | awk 'NR==2{print $5}'"
+    interval     = 60
+    timeout      = 1
+  }
+  metadata {
+    display_name = "CPU (Host)"
+    key          = "6_cpu_host"
     script       = "coder stat cpu --host"
     interval     = 10
     timeout      = 1
   }
   metadata {
-    display_name = "Memory Usage (Host)"
-    key          = "4_mem_usage_host"
+    display_name = "Memory (Host)"
+    key          = "7_mem_host"
     script       = "coder stat mem --host"
     interval     = 10
     timeout      = 1
   }
   metadata {
-    display_name = "Load Average (Host)"
-    key          = "5_load_host"
-    # get load avg scaled by number of cores
-    script   = <<EOT
-      echo "`cat /proc/loadavg | awk '{ print $1 }'` `nproc`" | awk '{ printf "%0.2f", $1/$2 }'
-    EOT
-    interval = 60
-    timeout  = 1
+    display_name = "Load Avg"
+    key          = "8_load_avg"
+    script       = "cat /proc/loadavg | awk '{printf \"%.1f/%.1f/%.1f\", $1, $2, $3}'"
+    interval     = 60
+    timeout      = 1
   }
   display_apps {
     vscode                 = true
