@@ -96,8 +96,6 @@ resource "coder_agent" "main" {
   arch           = "amd64"
   startup_script = <<-EOT
     #!/bin/bash
-    # We'll use set -e but with controlled error handling for pip installs
-    # set -e
 
     echo "Starting data engineering workspace setup..."
 
@@ -137,10 +135,6 @@ resource "coder_agent" "main" {
     pip install "apache-airflow[celery]==2.8.4" \
     --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.8.4/constraints-3.11.txt"
 
-#    pip install apache-airflow --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.5.3/constraints-3.8.txt"
-#    pip uninstall structlog -y
-#    pip install "structlog==25.4.0"
-
     # Vector database and model serving
     echo "Installing model serving and vector DB packages..."
     install_package "bentoml"
@@ -155,8 +149,6 @@ resource "coder_agent" "main" {
     install_package "ipywidgets"
 
     #Upgrade Jupyter dependencies
-    #pip install --upgrade jsonschema
-    #pip install --upgrade requests
     pip install \
       "jsonschema[format-nongpl]>=4.18.0" \
       "requests>=2.31.0" \
