@@ -156,6 +156,10 @@ resource "coder_agent" "main" {
     #pkill -f jupyter-lab || true
     #sleep 3
 
+    #Upgrade Jupyter dependencies
+    pip install --upgrade jsonschema
+    pip install --upgrade requests
+
     # Start JupyterLab with comprehensive configuration
     # Note: Security settings below are optimized for Coder workspace usage
     # where authentication is handled by Coder and access is proxied
