@@ -148,13 +148,13 @@ resource "coder_agent" "main" {
     install_package "kubeflow-training"
 
     # Ensure Jupyter widgets are available
-    #echo "Setting up Jupyter environment..."
-    #install_package "ipywidgets"
+    echo "Setting up Jupyter environment..."
+    install_package "ipywidgets"
 
     # Clean up any existing Jupyter processes
-    #echo "Cleaning up existing Jupyter processes..."
-    #pkill -f jupyter-lab || true
-    #sleep 3
+    echo "Cleaning up existing Jupyter processes..."
+    pkill -f jupyter-lab || true
+    sleep 3
 
     #Upgrade Jupyter dependencies
     pip install --upgrade jsonschema
@@ -163,44 +163,44 @@ resource "coder_agent" "main" {
     # Start JupyterLab with comprehensive configuration
     # Note: Security settings below are optimized for Coder workspace usage
     # where authentication is handled by Coder and access is proxied
-    #echo "Starting JupyterLab..."
-    #jupyter lab \
-    #  --ip=0.0.0.0 \
-    #  --port=8888 \
-    #  --no-browser \
-    #  --ServerApp.token='' \
-    #  --ServerApp.password='' \
-    #  --ServerApp.allow_origin='*' \
-    #  --ServerApp.allow_remote_access=True \
-    #  --ServerApp.disable_check_xsrf=True \
-    #  > /tmp/jupyter.log 2>&1 &
+    echo "Starting JupyterLab..."
+    jupyter lab \
+      --ip=0.0.0.0 \
+      --port=8888 \
+      --no-browser \
+      --ServerApp.token='' \
+      --ServerApp.password='' \
+      --ServerApp.allow_origin='*' \
+      --ServerApp.allow_remote_access=True \
+      --ServerApp.disable_check_xsrf=True \
+      > /tmp/jupyter.log 2>&1 &
 
     # Wait and verify Jupyter started
-    #echo "Waiting for JupyterLab to start..."
-    #sleep 5
+    echo "Waiting for JupyterLab to start..."
+    sleep 5
 
-    #if pgrep -f jupyter-lab > /dev/null; then
-    #  echo "✓ JupyterLab started successfully on port 8888"
-    #  echo "✓ Data Engineering workspace ready!"
-    #else
-    #  echo "✗ JupyterLab failed to start. Attempting restart..."
-    #  cat /tmp/jupyter.log
+    if pgrep -f jupyter-lab > /dev/null; then
+      echo "✓ JupyterLab started successfully on port 8888"
+      echo "✓ Data Engineering workspace ready!"
+    else
+      echo "✗ JupyterLab failed to start. Attempting restart..."
+      cat /tmp/jupyter.log
       
     #  # Try a simpler startup
-    #  jupyter lab --ip=0.0.0.0 --port=8888 --no-browser > /tmp/jupyter-simple.log 2>&1 &
-    #  sleep 3
+      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser > /tmp/jupyter-simple.log 2>&1 &
+      sleep 3
       
-    #  if pgrep -f jupyter-lab > /dev/null; then
-    #    echo "✓ JupyterLab started with basic configuration"
-    #  else
-    #    echo "✗ JupyterLab startup failed completely"
-    #    cat /tmp/jupyter-simple.log
-    #  fi
-    #fi
+      if pgrep -f jupyter-lab > /dev/null; then
+        echo "✓ JupyterLab started with basic configuration"
+      else
+        echo "✗ JupyterLab startup failed completely"
+        cat /tmp/jupyter-simple.log
+      fi
+    fi
 
     echo ""
     echo "Available services:"
-    # echo "- JupyterLab: http://localhost:8888"
+    echo "- JupyterLab: http://localhost:8888"
     echo "- Spark UI: http://localhost:4040 (when Spark session is active)"
     echo ""
     echo "Installed packages:"
@@ -276,27 +276,20 @@ resource "coder_agent" "main" {
   }
 }
 
-module "jupyterlab" {
-  count    = data.coder_workspace.me.start_count
-  source   = "registry.coder.com/coder/jupyterlab/coder"
-  version  = "1.2.0"
-  agent_id = coder_agent.main.id
+resource "coder_app" "jupyter" {
+  agent_id     = coder_agent.main.id
+  slug         = "jupyter"
+  display_name = "Jupyter Lab"
+  url          = "http://localhost:8888"
+  icon         = "/icon/jupyter.svg"
+  subdomain    = true
+  share        = "owner"
+  healthcheck {
+    url       = "http://localhost:8888/api"
+    interval  = 5
+    threshold = 10
+  }
 }
-
-#resource "coder_app" "jupyter" {
-#  agent_id     = coder_agent.main.id
-#  slug         = "jupyter"
-#  display_name = "Jupyter Lab"
-#  url          = "http://localhost:8888"
-#  icon         = "/icon/jupyter.svg"
-#  subdomain    = true
-#  share        = "owner"
-#  healthcheck {
-#    url       = "http://localhost:8888/api"
-#    interval  = 5
-#    threshold = 10
-#  }
-#}
 
 resource "coder_app" "spark_ui" {
   agent_id     = coder_agent.main.id
