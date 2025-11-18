@@ -151,14 +151,13 @@ resource "coder_agent" "main" {
     echo "Setting up Jupyter environment..."
     install_package "ipywidgets"
 
-    # Clean up any existing Jupyter processes
-    #echo "Cleaning up existing Jupyter processes..."
-    #pkill -f jupyter-lab || true
-    #sleep 3
-
     #Upgrade Jupyter dependencies
     pip install --upgrade jsonschema
     pip install --upgrade requests
+
+    # Download validation notebook
+    echo "Downloading package validation notebook..."
+    curl -o /home/jovyan/de_package_validation.ipynb https://raw.githubusercontent.com/greg-the-coder/wwt-data-science-templates/main/de_package_validation.ipynb
 
     # Start JupyterLab with comprehensive configuration
     # Note: Security settings below are optimized for Coder workspace usage
