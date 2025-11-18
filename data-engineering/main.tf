@@ -152,9 +152,9 @@ resource "coder_agent" "main" {
     install_package "ipywidgets"
 
     # Clean up any existing Jupyter processes
-    echo "Cleaning up existing Jupyter processes..."
-    pkill -f jupyter-lab || true
-    sleep 3
+    #echo "Cleaning up existing Jupyter processes..."
+    #pkill -f jupyter-lab || true
+    #sleep 3
 
     #Upgrade Jupyter dependencies
     pip install --upgrade jsonschema
