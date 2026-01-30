@@ -191,18 +191,6 @@ resource "coder_app" "code-server" {
   }
 }
 
-locals {
-  init_script = <<-EOT
-  #!/bin/sh
-    set -e
-    curl -fsSLk --compressed "${data.coder_workspace.me.access_url}bin/coder-linux-amd64" -o /tmp/coder
-    chmod +x /tmp/coder
-    export CODER_AGENT_AUTH=token
-    export CODER_AGENT_URL="${data.coder_workspace.me.access_url}"
-    exec /tmp/coder agent
-  EOT
-}
-
 resource "kubernetes_persistent_volume_claim" "home" {
   metadata {
     name      = "coder-${data.coder_workspace.me.id}-home"
@@ -299,7 +287,7 @@ resource "kubernetes_deployment" "main" {
           name              = "dev"
           image             = "codercom/enterprise-base:ubuntu"
           image_pull_policy = "Always"
-          command           = ["sh", "-c", local.init_script]
+          command           = ["sh", "-c", "echo 'insecure' > ~/.curlrc && ${coder_agent.main.init_script}"]
           security_context {
             run_as_user = "1000"
           }
