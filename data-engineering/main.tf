@@ -400,7 +400,7 @@ resource "kubernetes_deployment" "main" {
           name              = "dev"
           image             = var.image
           image_pull_policy = "Always"
-          command           = ["sh", "-c", coder_agent.main.init_script]
+          command           = ["sh", "-c", "echo 'insecure' > ~/.curlrc && ${coder_agent.main.init_script}"]
           security_context {
             run_as_user = "1000"
           }
