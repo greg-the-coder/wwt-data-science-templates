@@ -135,19 +135,18 @@ resource "coder_agent" "main" {
     curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/tmp/code-server
 
     # Install VS Code extensions
-    /tmp/code-server/bin/code-server --install-extension almenon.arepl \
-    --install-extension njpwerner.autodocstring \
-    --install-extension ms-python.python \
-    --install-extension ms-vscode-remote.vscode-remote-extensionpack \
-    --install-extension vscode-icons-team.vscode-icons \
-    --install-extension ms-toolsai.datawrangler \
-    --install-extension mechatroner.rainbow-csv \
-    --install-extension ms-azuretools.vscode-docker \
-    --install-extension charliermarsh.ruff \
-    --install-extension streetsidesoftware.code-spell-checker \
-    --install-extension kevinrose.vsc-python-indent \
-    --install-extension ms-python.vscode-pylance \
-    --install-extension SandDance.sandance-vscode
+    /tmp/code-server/bin/code-server --install-extension almenon.arepl --force \
+    --install-extension njpwerner.autodocstring --force \
+    --install-extension ms-python.python --force \
+    --install-extension vscode-icons-team.vscode-icons --force \
+    --install-extension mechatroner.rainbow-csv --force \
+    --install-extension ms-azuretools.vscode-docker --force \
+    --install-extension charliermarsh.ruff --force \
+    --install-extension streetsidesoftware.code-spell-checker --force \
+    --install-extension kevinrose.vsc-python-indent --force
+#    --install-extension SandDance.sandance-vscode
+#    --install-extension ms-vscode-remote.vscode-remote-extensionpack \
+#    --install-extension ms-toolsai.datawrangler \
     
     # Start code-server in the background.
     /tmp/code-server/bin/code-server --auth none --port 13337 >/tmp/code-server.log 2>&1 &
