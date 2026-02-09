@@ -145,7 +145,6 @@ resource "coder_agent" "main" {
     --install-extension streetsidesoftware.code-spell-checker --force \
     --install-extension kevinrose.vsc-python-indent --force
 #    --install-extension SandDance.sandance-vscode
-#    --install-extension ms-vscode-remote.vscode-remote-extensionpack \
 #    --install-extension ms-toolsai.datawrangler \
     
     # Start code-server in the background.
