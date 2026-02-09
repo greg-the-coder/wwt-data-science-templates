@@ -72,12 +72,33 @@ data "coder_parameter" "memory" {
     value = "4"
   }
   option {
-    name  = "6 GB"
-    value = "6"
-  }
-  option {
     name  = "8 GB"
     value = "8"
+  }
+  option {
+    name  = "16 GB"
+    value = "16"
+  }
+}
+
+
+data "coder_parameter" "gpu_count" {
+  name         = "gpu_count"
+  display_name = "GPU Count"
+  description  = "Number of NVIDIA GPUs (0 for CPU-only)"
+  default      = "0"
+  mutable      = true
+  option {
+    name  = "None"
+    value = "0"
+  }
+  option {
+    name  = "1 GPU"
+    value = "1"
+  }
+  option {
+    name  = "2 GPUs"
+    value = "2"
   }
 }
 
@@ -90,8 +111,8 @@ data "coder_parameter" "home_disk_size" {
   icon         = "/emojis/1f4be.png"
   mutable      = false
   validation {
-    min = 1
-    max = 99999
+    min = 10
+    max = 50
   }
 }
 
@@ -113,8 +134,24 @@ resource "coder_agent" "main" {
     # Append "--version x.x.x" to install a specific version of code-server.
     curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/tmp/code-server
 
+    # Install VS Code extensions
+       /tmp/code-server/bin/code-server --install-extension almenon.arepl \
+         --install-extension njpwerner.autodocstring \
+         --install-extension ms-python.python \
+         --install-extension ms-vscode-remote.vscode-remote-extensionpack \
+         --install-extension vscode-icons-team.vscode-icons \
+         --install-extension ms-toolsai.datawrangler \
+         --install-extension mechatroner.rainbow-csv \
+         --install-extension ms-azuretools.vscode-docker \
+         --install-extension charliermarsh.ruff \
+         --install-extension streetsidesoftware.code-spell-checker \
+         --install-extension kevinrose.vsc-python-indent \
+         --install-extension ms-python.vscode-pylance \
+         --install-extension SandDance.sandance-vscode
+
     # Start code-server in the background.
     /tmp/code-server/bin/code-server --auth none --port 13337 >/tmp/code-server.log 2>&1 &
+
   EOT
 
   # The following metadata blocks are optional. They are used to display
