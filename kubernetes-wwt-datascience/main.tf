@@ -185,6 +185,79 @@ resource "coder_agent" "main" {
     # Register the venv as a Jupyter kernel
     python -m ipykernel install --user --name=venv --display-name "Python 3.12 Coder (venv)"
 
+    # Create workspace validation script
+    cat > $HOME/validate_workspace.sh <<'VALIDATE_EOF'
+#!/bin/bash
+# Quick workspace validation
+set -e
+source $HOME/venv/bin/activate
+echo "=== Workspace Validation ==="
+echo "Python: $(python --version)"
+echo "Location: $(which python)"
+echo ""
+echo "Jupyter Kernel:"
+jupyter kernelspec list | grep venv && echo "✅ Kernel OK" || echo "❌ Not found"
+echo ""
+echo "Package Test:"
+python -c "
+packages = ['numpy', 'pandas', 'tensorflow', 'torch', 'langchain', 'chromadb']
+for p in packages:
+    try:
+        __import__(p)
+        print(f'  ✅ {p}')
+    except:
+        print(f'  ❌ {p}')
+"
+echo ""
+echo "✅ Validation complete!"
+VALIDATE_EOF
+    chmod +x $HOME/validate_workspace.sh
+
+    # Create quick start guide
+    cat > $HOME/QUICK_START.txt <<'QUICKSTART_EOF'
+╔════════════════════════════════════════════════════════════╗
+║     WWT Data Science Workspace - Quick Start              ║
+╚════════════════════════════════════════════════════════════╝
+
+🚀 FIRST STEPS:
+  1. Activate Python: source $HOME/venv/bin/activate
+  2. Validate setup: bash ~/validate_workspace.sh
+  3. Access VS Code: http://localhost:13337
+
+📦 INSTALLED PACKAGES:
+  • ML: TensorFlow, PyTorch, scikit-learn, XGBoost
+  • Data: NumPy, Pandas, Polars, SciPy
+  • Viz: Matplotlib, Seaborn, Plotly
+  • NLP: Transformers, spaCy, Datasets
+  • LLM: LangChain, ChromaDB
+  • Web: Streamlit, Jupyter
+
+🎯 COMMON COMMANDS:
+  source $HOME/venv/bin/activate  # Always do this first!
+  python script.py                # Run Python
+  jupyter console --kernel=venv   # Jupyter console
+  streamlit run app.py            # Run Streamlit
+  pip install package-name        # Install packages
+
+✅ VALIDATION:
+  bash ~/validate_workspace.sh    # Full validation
+  python -c "import tensorflow, torch, langchain; print('OK')"
+
+📚 MORE INFO:
+  See README.md in the template repository
+  Run: cat ~/QUICK_START.txt (this file)
+
+QUICKSTART_EOF
+
+    echo ""
+    echo "=========================================="
+    echo "✅ Workspace setup complete!"
+    echo "=========================================="
+    echo ""
+    echo "Quick start: cat ~/QUICK_START.txt"
+    echo "Validation:  bash ~/validate_workspace.sh"
+    echo ""
+
     # Install the latest code-server.
     # Append "--version x.x.x" to install a specific version of code-server.
     curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/tmp/code-server
