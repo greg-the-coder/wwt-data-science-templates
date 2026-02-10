@@ -129,6 +129,61 @@ resource "coder_agent" "main" {
   arch           = "amd64"
   startup_script = <<-EOT
     set -e
+    set -o pipefail
+
+    sudo apt-get update
+
+    # Create and activate a virtual environment
+    python3 -m venv $HOME/venv
+    . $HOME/venv/bin/activate
+    
+    # Upgrade pip, setuptools, and wheel first
+    pip install --upgrade pip setuptools wheel
+
+    # Install packages in optimized order to minimize conflicts
+    echo "Installing core numerical libraries..."
+    pip install numpy scipy
+
+    echo "Installing data manipulation libraries..."
+    pip install pandas polars
+
+    echo "Installing visualization libraries..."
+    pip install matplotlib seaborn plotly
+
+    echo "Installing PyTorch (CPU version)..."
+    pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+    echo "Installing TensorFlow..."
+    pip install tensorflow
+
+    echo "Installing ML tools..."
+    pip install scikit-learn xgboost statsmodels
+
+    echo "Installing computer vision..."
+    pip install opencv-python-headless
+
+    echo "Installing NLP libraries..."
+    pip install spacy transformers tokenizers datasets
+
+    echo "Installing LLM frameworks..."
+    pip install langchain langchain_openai langchain_community langgraph
+
+    echo "Installing vector database..."
+    pip install chromadb
+
+    echo "Installing web frameworks..."
+    pip install streamlit
+
+    echo "Installing utilities..."
+    pip install pydantic python-dotenv requests ipykernel
+
+    echo "All Python packages installed successfully!"
+
+    # Verify critical packages
+    python -c "import tensorflow, torch, langchain, chromadb; print('Critical packages verified OK')"
+
+    # Register the venv as a Jupyter kernel
+    python -m ipykernel install --user --name=venv --display-name "Python 3.12 Coder (venv)"
 
     # Install the latest code-server.
     # Append "--version x.x.x" to install a specific version of code-server.
@@ -144,11 +199,11 @@ resource "coder_agent" "main" {
     --install-extension charliermarsh.ruff --force \
     --install-extension streetsidesoftware.code-spell-checker --force \
     --install-extension kevinrose.vsc-python-indent --force
-#    --install-extension SandDance.sandance-vscode
-#    --install-extension ms-toolsai.datawrangler \
     
     # Start code-server in the background.
     /tmp/code-server/bin/code-server --auth none --port 13337 >/tmp/code-server.log 2>&1 &
+
+    
 
   EOT
 
